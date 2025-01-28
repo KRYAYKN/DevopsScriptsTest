@@ -65,6 +65,19 @@ for BRANCH in $PASSED_BRANCHES; do
         echo "No conflicts detected. Merging PR #$PR_NUMBER into $STAGING_BRANCH..."
         gh pr merge "$PR_NUMBER" --merge --body "Merging $TEMP_BRANCH into $STAGING_BRANCH."
         echo "PR #$PR_NUMBER merged successfully."
+
+        # Merge promotion/staging to staging
+        echo "Merging $STAGING_BRANCH into staging..."
+        git checkout staging
+        git pull origin staging
+        git merge "$STAGING_BRANCH"
+        git push origin staging
+        echo "$STAGING_BRANCH successfully merged into staging."
+
+        # Delete the TEMP_BRANCH after successful merge
+        echo "Deleting $TEMP_BRANCH..."
+        git push origin --delete "$TEMP_BRANCH"
+        echo "$TEMP_BRANCH deleted successfully."
       else
         echo "Conflict detected in PR #$PR_NUMBER. Please resolve manually."
         echo "Conflict resolution link: https://github.com/$(echo $GITHUB_REPO | cut -d'/' -f4,5)/pull/$PR_NUMBER"
