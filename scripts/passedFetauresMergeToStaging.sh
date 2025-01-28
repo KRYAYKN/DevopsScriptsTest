@@ -65,11 +65,6 @@ for BRANCH in $PASSED_BRANCHES; do
         echo "No conflicts detected. Merging PR #$PR_NUMBER into $STAGING_BRANCH..."
         gh pr merge "$PR_NUMBER" --merge --body "Merging $TEMP_BRANCH into $STAGING_BRANCH."
         echo "PR #$PR_NUMBER merged successfully."
-
-        # Delete the TEMP_BRANCH after successful merge
-        echo "Deleting $TEMP_BRANCH..."
-        git push origin --delete "$TEMP_BRANCH"
-        echo "$TEMP_BRANCH deleted successfully."
       else
         echo "Conflict detected in PR #$PR_NUMBER. Please resolve manually."
         echo "Conflict resolution link: https://github.com/$(echo $GITHUB_REPO | cut -d'/' -f4,5)/pull/$PR_NUMBER"
@@ -79,6 +74,19 @@ for BRANCH in $PASSED_BRANCHES; do
     fi
   else
     echo "$TEMP_BRANCH does not exist in the remote repository. Skipping."
+  fi
+
+done
+
+# Step 4: Cleanup TEMP branches
+for BRANCH in $PASSED_BRANCHES $FAILED_BRANCHES; do
+  TEMP_BRANCH="TEMP_${BRANCH}"
+  echo "Deleting TEMP branch: $TEMP_BRANCH..."
+  if git ls-remote --exit-code --heads origin "$TEMP_BRANCH" > /dev/null; then
+    git push origin --delete "$TEMP_BRANCH"
+    echo "$TEMP_BRANCH deleted successfully."
+  else
+    echo "$TEMP_BRANCH does not exist. Skipping."
   fi
 
 done
