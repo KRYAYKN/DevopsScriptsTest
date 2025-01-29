@@ -24,27 +24,26 @@ FAILED_BRANCHES=$(jq -r '.summary.testCaseSummaryList[] | select(.status == "fai
 # Extract passed branches
 PASSED_BRANCHES=$(jq -r '.summary.testCaseSummaryList[] | select(.status == "pass") | .metadata.tags[]' accelq-results.json | sort | uniq)
 
-# Check if there are any failed branches
-if [[ -z "$FAILED_BRANCHES" ]]; then
-  echo "No failed branches found."
-else
-  echo "Failed branches:"
-  echo "$FAILED_BRANCHES"
-fi
+# Fetch latest remote branches and prune deleted ones
+echo "Fetching latest remote branches..."
+git fetch --all --prune
 
-# Check if there are any passed branches
-if [[ -z "$PASSED_BRANCHES" ]]; then
-  echo "No passed branches found."
-else
-  echo "Passed branches:"
-  echo "$PASSED_BRANCHES"
-fi
+echo "Failed branches:"
+echo "$FAILED_BRANCHES"
+echo "Passed branches:"
+echo "$PASSED_BRANCHES"
 
 # Step 3: Process Passed Branches
 STAGING_BRANCH="promotion/staging"
 for BRANCH in $PASSED_BRANCHES; do
-  TEMP_BRANCH="TEMP_${BRANCH}"
-  echo "Processing passed branch: $BRANCH with temp branch: $TEMP_BRANCH"
+  TEMP_BRANCH="TEMP_${BRANCH// /}"  # Trim spaces
+  echo "Processing passed branch: |$TEMP_BRANCH|"
+
+  # Debugging Output: Uzak repodaki branch'leri listeleyelim
+  echo "Checking existence of $TEMP_BRANCH in remote repository..."
+  git ls-remote origin | grep TEMP_
+  echo "Verifying exact match for: |$TEMP_BRANCH|"
+  git ls-remote origin | grep "^.*$TEMP_BRANCH$"
 
   # Check if TEMP_BRANCH exists in remote
   if git ls-remote --exit-code --heads origin "$TEMP_BRANCH" > /dev/null; then
@@ -65,11 +64,6 @@ for BRANCH in $PASSED_BRANCHES; do
         echo "No conflicts detected. Merging PR #$PR_NUMBER into $STAGING_BRANCH..."
         gh pr merge "$PR_NUMBER" --merge --body "Merging $TEMP_BRANCH into $STAGING_BRANCH."
         echo "PR #$PR_NUMBER merged successfully."
-
-        # Delete the TEMP_BRANCH after successful merge
-        echo "Deleting $TEMP_BRANCH..."
-        git push origin --delete "$TEMP_BRANCH"
-        echo "$TEMP_BRANCH deleted successfully."
       else
         echo "Conflict detected in PR #$PR_NUMBER. Please resolve manually."
         echo "Conflict resolution link: https://github.com/$(echo $GITHUB_REPO | cut -d'/' -f4,5)/pull/$PR_NUMBER"
@@ -78,9 +72,32 @@ for BRANCH in $PASSED_BRANCHES; do
       echo "Failed to create or find PR for $TEMP_BRANCH to $STAGING_BRANCH."
     fi
   else
-    echo "$TEMP_BRANCH does not exist in the remote repository. Skipping."
+    echo "Error: $TEMP_BRANCH does not exist in the remote repository. Skipping."
+    echo "Available branches:"
+    git branch -r | grep TEMP_
   fi
+done
 
+# Step 4: Cleanup TEMP branches
+for BRANCH in $PASSED_BRANCHES $FAILED_BRANCHES; do
+  TEMP_BRANCH="TEMP_${BRANCH// /}"
+  echo "Deleting TEMP branch: |$TEMP_BRANCH|"
+  
+  if git ls-remote --exit-code --heads origin "$TEMP_BRANCH" > /dev/null; then
+    echo "Executing: git push origin --delete $TEMP_BRANCH"
+    git push origin --delete "$TEMP_BRANCH"
+    
+    # Silme işlemini doğrulama
+    if git ls-remote --exit-code --heads origin "$TEMP_BRANCH" > /dev/null; then
+      echo "Error: $TEMP_BRANCH could not be deleted!"
+    else
+      echo "$TEMP_BRANCH deleted successfully."
+    fi
+  else
+    echo "Error: $TEMP_BRANCH does not exist in the remote repository. Skipping."
+    echo "Available branches:"
+    git branch -r | grep TEMP_
+  fi
 done
 
 # Cleanup
